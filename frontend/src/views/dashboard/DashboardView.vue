@@ -50,6 +50,21 @@
         tone="info"
         icon="Money"
       />
+      <StatCard
+        label="在册人员 / 培训"
+        :value="formatNumber(overview.personnel.person_active)"
+        unit="人"
+        :hint="`累计培训 ${formatNumber(overview.personnel.training_total)} 场，本月 ${formatNumber(overview.personnel.training_month)} 场`"
+        icon="User"
+      />
+      <StatCard
+        label="证书到期提醒"
+        :value="formatNumber(overview.personnel.cert_expiring_count + overview.personnel.cert_expired_count)"
+        unit="本"
+        :hint="`${overview.personnel.cert_expiring_count} 本即将到期，${overview.personnel.cert_expired_count} 本已过期`"
+        :tone="(overview.personnel.cert_expiring_count + overview.personnel.cert_expired_count) ? 'danger' : 'default'"
+        icon="Postcard"
+      />
     </div>
 
     <div class="chart-grid">
@@ -57,6 +72,58 @@
       <ChartPanel title="绿地类型分布" hint="按绿地处数" :option="typeChart" />
       <ChartPanel title="养护任务类型分布" hint="按任务条数" :option="taskTypeChart" />
       <ChartPanel title="绿植更换原因分布" hint="按更换数量" :option="reasonChart" />
+    </div>
+
+    <div class="dashboard-columns">
+      <div class="panel">
+        <div class="table-toolbar">
+          <span class="panel-title">证书即将到期 / 待复审</span>
+          <el-link type="primary" :underline="false" @click="router.push('/certificates')">
+            持证管理
+          </el-link>
+        </div>
+        <el-table :data="dashboard.certificate_reminders.expiring" size="small"
+                  empty-text="暂无即将到期的证书">
+          <el-table-column label="持证人" width="90">
+            <template #default="{ row }">{{ row.person?.name || '-' }}</template>
+          </el-table-column>
+          <el-table-column prop="cert_type_label" label="证书类型" width="120" />
+          <el-table-column prop="cert_no" label="证书编号" min-width="130" show-overflow-tooltip />
+          <el-table-column label="到期/复审" width="110">
+            <template #default="{ row }">{{ row.deadline }}</template>
+          </el-table-column>
+          <el-table-column label="剩余" width="80">
+            <template #default="{ row }">
+              <span class="due-soon">{{ row.days_to_expire }} 天</span>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+
+      <div class="panel">
+        <div class="table-toolbar">
+          <span class="panel-title">证书已过期（不得上岗）</span>
+          <el-link type="primary" :underline="false" @click="router.push('/certificates')">
+            立即处理
+          </el-link>
+        </div>
+        <el-table :data="dashboard.certificate_reminders.expired" size="small"
+                  empty-text="暂无过期证书">
+          <el-table-column label="持证人" width="90">
+            <template #default="{ row }">{{ row.person?.name || '-' }}</template>
+          </el-table-column>
+          <el-table-column prop="cert_type_label" label="证书类型" width="120" />
+          <el-table-column prop="cert_no" label="证书编号" min-width="130" show-overflow-tooltip />
+          <el-table-column label="到期/复审" width="110">
+            <template #default="{ row }">{{ row.deadline }}</template>
+          </el-table-column>
+          <el-table-column label="状态" width="90">
+            <template #default>
+              <EnumTag group="certificate_validity" value="expired" label="已过期" />
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
     </div>
 
     <div class="dashboard-columns">
@@ -177,6 +244,10 @@ function emptyDashboard() {
       task: { total: 0, open_count: 0, overdue_count: 0, due_soon_count: 0, completion_rate: 0, by_status: {} },
       record: { total: 0, month_count: 0, month_work_hours: 0, total_work_hours: 0 },
       replacement: { total: 0, month_count: 0, month_quantity: 0, month_amount: 0, year_amount: 0, total_amount: 0 },
+      personnel: {
+        person_total: 0, person_active: 0, training_total: 0, training_month: 0,
+        cert_expiring_count: 0, cert_expired_count: 0,
+      },
     },
     distributions: {
       green_space_by_type: [],
@@ -188,6 +259,7 @@ function emptyDashboard() {
     ranking: [],
     overdue_tasks: [],
     upcoming_tasks: [],
+    certificate_reminders: { summary: {}, expiring: [], expired: [] },
     recent_activity: { records: [], replacements: [] },
   }
 }
@@ -257,6 +329,11 @@ onMounted(load)
 
 .overdue-days {
   color: #f56c6c;
+  font-weight: 600;
+}
+
+.due-soon {
+  color: #e6a23c;
   font-weight: 600;
 }
 </style>

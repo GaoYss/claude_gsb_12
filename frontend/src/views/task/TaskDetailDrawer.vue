@@ -22,6 +22,21 @@
           <EnumTag group="task_status" :value="detail.status" :label="detail.status_label" />
         </el-descriptions-item>
         <el-descriptions-item label="完成时间">{{ formatDateTime(detail.completed_at) }}</el-descriptions-item>
+        <el-descriptions-item label="持证要求" :span="2">
+          <template v-if="detail.required_cert_type">
+            <el-tag type="warning" size="small" effect="plain">
+              {{ detail.required_cert_type_label }}
+            </el-tag>
+            <span class="cert-assignees">
+              <el-tag v-for="item in detail.assignees || []" :key="item.person_id"
+                      type="info" size="small" effect="plain" class="person-tag">
+                {{ item.person?.name }}
+              </el-tag>
+              <span v-if="!(detail.assignees || []).length" class="cert-warning">尚未指定作业人员</span>
+            </span>
+          </template>
+          <span v-else class="text-muted">普通作业，无需持证</span>
+        </el-descriptions-item>
         <el-descriptions-item label="任务说明" :span="2">{{ detail.description || '-' }}</el-descriptions-item>
       </el-descriptions>
 
@@ -132,5 +147,26 @@ defineExpose({ open })
 
 .panel-title {
   font-weight: 600;
+}
+
+.cert-assignees {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: 10px;
+}
+
+.person-tag {
+  margin: 0;
+}
+
+.cert-warning {
+  color: #e6a23c;
+  font-size: 12px;
+}
+
+.text-muted {
+  color: #909399;
 }
 </style>

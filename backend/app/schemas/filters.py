@@ -72,6 +72,12 @@ def task_filters(args):
     filters["date_to"] = _date(args, "date_to")
     filters["overdue"] = _flag(args, "overdue")
     filters["unplanned"] = _flag(args, "unplanned")
+    # 仅看需要持证上岗的任务
+    if _flag(args, "cert_required"):
+        filters["cert_required"] = True
+    cert_type = _enum(args, "required_cert_type", "cert_type")
+    if cert_type:
+        filters["required_cert_type"] = cert_type
     return filters
 
 
@@ -109,4 +115,58 @@ def replacement_filters(args):
         filters["keyword"] = keyword
     filters["date_from"] = _date(args, "date_from")
     filters["date_to"] = _date(args, "date_to")
+    return filters
+
+
+def person_filters(args):
+    filters = {}
+    value = _enum(args, "status", "person_status")
+    if value:
+        filters["status"] = value
+    team = _text(args, "team")
+    if team:
+        filters["team"] = team
+    keyword = _text(args, "keyword")
+    if keyword:
+        filters["keyword"] = keyword
+    return filters
+
+
+def training_filters(args):
+    filters = {}
+    value = _enum(args, "category", "training_category")
+    if value:
+        filters["category"] = value
+    trainer = _text(args, "trainer")
+    if trainer:
+        filters["trainer"] = trainer
+    person_id = _int(args, "person_id")
+    if person_id:
+        filters["person_id"] = person_id
+    keyword = _text(args, "keyword")
+    if keyword:
+        filters["keyword"] = keyword
+    filters["date_from"] = _date(args, "date_from")
+    filters["date_to"] = _date(args, "date_to")
+    return filters
+
+
+def certificate_filters(args):
+    filters = {}
+    person_id = _int(args, "person_id")
+    if person_id:
+        filters["person_id"] = person_id
+    for key, group_key in (("cert_type", "cert_type"), ("status", "certificate_status")):
+        value = _enum(args, key, group_key)
+        if value:
+            filters[key] = value
+    # 派生时效过滤：valid / expiring / expired / revoked
+    validity = _text(args, "validity")
+    if validity in {"valid", "expiring", "expired", "revoked"}:
+        filters["validity"] = validity
+    keyword = _text(args, "keyword")
+    if keyword:
+        filters["keyword"] = keyword
+    filters["expire_from"] = _date(args, "expire_from")
+    filters["expire_to"] = _date(args, "expire_to")
     return filters

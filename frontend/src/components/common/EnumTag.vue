@@ -21,6 +21,10 @@ const TAG_TYPES = {
   quality_result: { qualified: 'success', pending: 'warning', unqualified: 'danger' },
   maintenance_grade: { level1: 'success', level2: 'primary', level3: 'info' },
   replacement_reason: { dead: 'danger', disease: 'warning', aging: 'info', upgrade: 'primary' },
+  person_status: { active: 'success', leave: 'warning', dispatched: 'primary', resigned: 'info' },
+  attendance_status: { present: 'success', leave: 'warning', absent: 'danger' },
+  certificate_status: { active: 'success', revoked: 'info' },
+  certificate_validity: { valid: 'success', expiring: 'warning', expired: 'danger', revoked: 'info' },
 }
 
 const meta = useMetaStore()

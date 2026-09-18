@@ -130,6 +130,60 @@ MEASURE_UNIT = EnumGroup("measure_unit", [
     ("clump", "丛"),
 ])
 
+# ---------------------------------------------------------------- 人员档案
+PERSON_STATUS = EnumGroup("person_status", [
+    ("active", "在岗"),
+    ("leave", "休假"),
+    ("dispatched", "外借"),
+    ("resigned", "离岗"),
+])
+
+# ---------------------------------------------------------------- 培训记录
+TRAINING_CATEGORY = EnumGroup("training_category", [
+    ("safety", "安全生产培训"),
+    ("prejob", "岗前培训"),
+    ("skill", "技能提升培训"),
+    ("special", "特种作业培训"),
+    ("regulation", "制度规范培训"),
+    ("other", "其他培训"),
+])
+
+ATTENDANCE_STATUS = EnumGroup("attendance_status", [
+    ("present", "已参加"),
+    ("leave", "请假"),
+    ("absent", "缺席"),
+])
+
+# ---------------------------------------------------------------- 特种作业证书
+# 园林绿化养护涉及的特种作业 / 持证上岗类型
+CERT_TYPE = EnumGroup("cert_type", [
+    ("electrician_low", "低压电工作业"),
+    ("electrician_high", "高压电工作业"),
+    ("welding", "焊接与热切割作业"),
+    ("height", "高处作业"),
+    ("lifting", "起重机械作业"),
+    ("forklift", "场内机动车辆作业"),
+    ("pest_control", "有害生物防治作业"),
+    ("other", "其他证书"),
+])
+
+# 证书登记状态（入库字段）
+CERTIFICATE_STATUS = EnumGroup("certificate_status", [
+    ("active", "在册"),
+    ("revoked", "已注销"),
+])
+
+# 证书时效状态（按日期派生，不入库）
+CERTIFICATE_VALIDITY = EnumGroup("certificate_validity", [
+    ("valid", "有效"),
+    ("expiring", "即将到期"),
+    ("expired", "已过期"),
+    ("revoked", "已注销"),
+])
+
+# 距到期（或复审日）不足该天数即视为「即将到期」
+CERT_EXPIRE_SOON_DAYS = 30
+
 # 前端下拉与文档共用的一份字典清单
 ENUM_GROUPS = {
     "green_space_type": GREEN_SPACE_TYPE,
@@ -144,6 +198,12 @@ ENUM_GROUPS = {
     "replacement_reason": REPLACEMENT_REASON,
     "old_plant_status": OLD_PLANT_STATUS,
     "measure_unit": MEASURE_UNIT,
+    "person_status": PERSON_STATUS,
+    "training_category": TRAINING_CATEGORY,
+    "attendance_status": ATTENDANCE_STATUS,
+    "cert_type": CERT_TYPE,
+    "certificate_status": CERTIFICATE_STATUS,
+    "certificate_validity": CERTIFICATE_VALIDITY,
 }
 
 

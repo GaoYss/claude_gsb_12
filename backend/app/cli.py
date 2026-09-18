@@ -13,10 +13,13 @@ from flask.cli import with_appcontext
 from .extensions import db
 from .models import GreenSpace
 from .services import (
+    CertificateService,
     GreenSpaceService,
     MaintenanceRecordService,
     MaintenanceTaskService,
+    PersonService,
     PlantReplacementService,
+    TrainingRecordService,
 )
 
 SPACE_SEEDS = [
@@ -161,8 +164,92 @@ PLANT_POOL = [
 REASONS = ["dead", "disease", "aging", "upgrade", "supplement", "design"]
 OLD_STATUS = ["dead", "dying", "diseased", "aging", "normal"]
 WEATHERS = ["sunny", "cloudy", "overcast", "rain", "windy"]
-WORKERS = ["王海涛", "李建民", "张凤英", "吴国强", "何丽萍", "赵春生", "孙明华", "许娟"]
 SUPPLIERS = ["萧山苗木合作社", "临安绿源苗圃", "余杭花卉基地", "杭州城西园艺公司"]
+
+# (工号, 姓名, 班组, 岗位, 联系电话)
+PERSON_SEEDS = [
+    ("P2026001", "王海涛", "绿化一班", "班长", "13800010001"),
+    ("P2026002", "李建民", "绿化一班", "高级绿化工", "13800010002"),
+    ("P2026003", "张凤英", "绿化二班", "绿化工", "13800010003"),
+    ("P2026004", "赵春生", "绿化二班", "绿化工", "13800010004"),
+    ("P2026005", "吴国强", "植保班", "植保技师", "13800010005"),
+    ("P2026006", "何丽萍", "植保班", "植保工", "13800010006"),
+    ("P2026007", "孙明华", "机修班", "电工", "13800010007"),
+    ("P2026008", "周永强", "机修班", "叉车司机", "13800010008"),
+    ("P2026009", "陈守义", "机修班", "焊工", "13800010009"),
+    ("P2026010", "许娟", "养护科", "内勤", "13800010010"),
+]
+WORKERS = [item[1] for item in PERSON_SEEDS]
+
+# 特种作业证书：(持证人姓名, 类型, 证书编号, 发证偏移天, 到期偏移天, 复审偏移天)
+# 偏移天相对今天，负数为过去；覆盖有效、即将到期、已过期、待复审等场景
+def CERT_SEEDS(today_):
+    return [
+        ("王海涛", "height", "GA2024010001", -980, 800, None),
+        ("李建民", "height", "GA2024010002", -700, 20, 20),        # 20 天后到期/复审
+        ("吴国强", "pest_control", "PB2025030011", -560, 500, None),
+        ("何丽萍", "pest_control", "PB2023060088", -770, -40, None),  # 已过期
+        ("孙明华", "electrician_low", "DD2024020077", -720, 400, 25),  # 25 天后复审
+        ("周永强", "forklift", "CC2024060033", -820, 600, None),
+        ("陈守义", "welding", "HJ2022050055", -1500, -95, None),   # 已过期
+    ]
+
+# (培训主题, 类别, 日期偏移天, 地点, 讲师, 学时, 参加班组或人员, 缺席人员)
+def TRAINING_SEEDS(today_):
+    return [
+        {
+            "topic": "安全生产月专题培训",
+            "category": "safety",
+            "offset": -60,
+            "location": "单位多功能厅",
+            "trainer": "钱志安（市应急管理局讲师）",
+            "duration_hours": 4,
+            "content": "学习园林作业安全规程、道路作业交通安全与应急救护知识。",
+            "all": True,
+            "leave": ["许娟"],
+        },
+        {
+            "topic": "高处作业安全操作与防坠落培训",
+            "category": "special",
+            "offset": -20,
+            "location": "绿化一班班组园地",
+            "trainer": "王海涛",
+            "duration_hours": 3,
+            "content": "登高梯具检查、安全带正确佩戴、高大乔木修剪作业规范。",
+            "teams": ["绿化一班"],
+            "leave": [],
+        },
+        {
+            "topic": "农药安全使用与有害生物防治培训",
+            "category": "special",
+            "offset": -35,
+            "location": "植保班药械仓库",
+            "trainer": "吴国强",
+            "duration_hours": 4,
+            "content": "低毒药剂配制、喷洒防护、废弃物处理与常见病虫害识别。",
+            "teams": ["植保班"],
+            "leave": [],
+        },
+        {
+            "topic": "新入职人员岗前安全教育",
+            "category": "prejob",
+            "offset": -7,
+            "location": "养护科会议室",
+            "trainer": "许娟",
+            "duration_hours": 2,
+            "content": "规章制度、岗位职责、现场安全交底与考勤要求。",
+            "names": ["张凤英", "赵春生", "何丽萍"],
+            "leave": [],
+        },
+    ]
+
+# 作业类型 → 要求证书类型与固定作业人员（证书覆盖历史与未来计划日期）
+def CERT_TASK_RULES(people):
+    return {
+        "prune": ("height", [people["王海涛"], people["李建民"]]),
+        "pest": ("pest_control", [people["吴国强"]]),
+        "replant": ("forklift", [people["周永强"]]),
+    }
 
 
 def register_cli(app):
@@ -207,7 +294,8 @@ def seed_command(reset, seed_value):
     summary = generate_demo_data(random.Random(seed_value))
     click.echo(
         "演示数据写入完成：绿地 {green_space} 处、养护任务 {maintenance_task} 条、"
-        "养护记录 {maintenance_record} 条、绿植更换 {plant_replacement} 条".format(**summary)
+        "养护记录 {maintenance_record} 条、绿植更换 {plant_replacement} 条、"
+        "人员 {person} 名、培训 {training} 场、特种作业证书 {certificate} 本".format(**summary)
     )
 
 
@@ -220,7 +308,75 @@ def generate_demo_data(rng):
         "maintenance_task": 0,
         "maintenance_record": 0,
         "plant_replacement": 0,
+        "person": 0,
+        "training": 0,
+        "certificate": 0,
     }
+
+    # ------------------------------------------------------------- 人员
+    people = {}
+    for employee_no, name, team, position, phone in PERSON_SEEDS:
+        person = PersonService.create({
+            "employee_no": employee_no,
+            "name": name,
+            "team": team,
+            "position": position,
+            "phone": phone,
+            "entry_date": today_ - timedelta(days=rng.randint(300, 2600)),
+        })
+        people[name] = person
+        counts["person"] += 1
+
+    # ------------------------------------------------------------- 证书
+    for name, cert_type, cert_no, issue_off, expire_off, review_off in CERT_SEEDS(today_):
+        holder = people.get(name)
+        if holder is None:
+            continue
+        payload = {
+            "cert_no": cert_no,
+            "person_id": holder.id,
+            "cert_type": cert_type,
+            "issuer": "杭州市应急管理局",
+            "issue_date": today_ + timedelta(days=issue_off),
+            "expire_date": today_ + timedelta(days=expire_off),
+        }
+        if review_off is not None:
+            payload["review_date"] = today_ + timedelta(days=review_off)
+        CertificateService.create(payload)
+        counts["certificate"] += 1
+
+    # ------------------------------------------------------------- 培训
+    for seed in TRAINING_SEEDS(today_):
+        if seed.get("all"):
+            names = list(people)
+        elif seed.get("teams"):
+            names = [
+                name for name, person in people.items() if person.team in seed["teams"]
+            ]
+        else:
+            names = [name for name in seed.get("names", []) if name in people]
+        leave = set(seed.get("leave", []))
+        TrainingRecordService.create({
+            "topic": seed["topic"],
+            "category": seed["category"],
+            "train_date": today_ + timedelta(days=seed["offset"]),
+            "location": seed["location"],
+            "trainer": seed["trainer"],
+            "duration_hours": seed["duration_hours"],
+            "content": seed["content"],
+            "attendees": [
+                {
+                    "person_id": people[name].id,
+                    "attendance": "leave" if name in leave else "present",
+                    "score": None if name in leave else str(rng.randint(80, 98)),
+                }
+                for name in names
+            ],
+        })
+        counts["training"] += 1
+
+    # 作业类型 → 持证要求与作业人员
+    cert_rules = CERT_TASK_RULES(people)
 
     for index, space_seed in enumerate(SPACE_SEEDS):
         payload = dict(space_seed)
@@ -239,7 +395,7 @@ def generate_demo_data(rng):
                 if planned_ahead
                 else today_ - timedelta(days=rng.randint(5, 170))
             )
-            task = MaintenanceTaskService.create({
+            task_payload = {
                 "green_space_id": space.id,
                 "title": title,
                 "task_type": task_type,
@@ -247,7 +403,15 @@ def generate_demo_data(rng):
                 "priority": priority,
                 "executor": executor,
                 "description": description,
-            })
+            }
+            # 需要持证的作业类型：挂上证书要求与持有效证书的作业人员
+            if task_type in cert_rules:
+                cert_type, holders = cert_rules[task_type]
+                task_payload["required_cert_type"] = cert_type
+                task_payload["assignee_ids"] = [
+                    person.id for person in holders
+                ]
+            task = MaintenanceTaskService.create(task_payload)
             counts["maintenance_task"] += 1
 
             # 未来任务保持待执行；历史任务少量遗留为逾期未办

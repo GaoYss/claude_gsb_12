@@ -1,11 +1,20 @@
 """养护任务业务逻辑。"""
 
 from sqlalchemy import func, or_
+from sqlalchemy.orm import joinedload
 
-from ..constants import ENUM_GROUPS
+from ..constants import CERT_TYPE, ENUM_GROUPS
 from ..errors import ConflictError, ValidationError
 from ..extensions import db
-from ..models import GreenSpace, MaintenanceRecord, MaintenanceTask, PlantReplacement
+from ..models import (
+    Certificate,
+    GreenSpace,
+    MaintenanceRecord,
+    MaintenanceTask,
+    Person,
+    PlantReplacement,
+    TaskAssignee,
+)
 from ..models.maintenance_task import OPEN_STATUSES
 from ..models.mixins import utcnow
 from ..utils.dates import format_date, today
@@ -16,12 +25,13 @@ from .code_generator import daily_prefix
 
 
 class MaintenanceTaskService(BaseService):
-    """养护任务登记：创建、检索、状态流转与删除保护。"""
+    """养护任务登记：创建、检索、状态流转、持证校验与删除保护。"""
 
     model = MaintenanceTask
     label = "养护任务"
     code_field = "task_no"
     code_width = 3
+    transient_fields = ("assignee_ids",)
 
     SORTABLE = {
         "plan_date": MaintenanceTask.plan_date,
@@ -35,6 +45,75 @@ class MaintenanceTaskService(BaseService):
 
     # ------------------------------------------------------------ 校验
     @classmethod
+    def _resolve_assignees(cls, person_ids):
+        """校验作业人员均存在且可派工，返回 Person 列表（保持传入顺序）。"""
+
+        if not person_ids:
+            return []
+        people = db.session.query(Person).filter(Person.id.in_(person_ids)).all()
+        people_map = {person.id: person for person in people}
+        missing = [pid for pid in person_ids if pid not in people_map]
+        if missing:
+            raise ValidationError(
+                "登记失败", details={"assignee_ids": f"{len(missing)} 名作业人员不存在，请刷新后重试"}
+            )
+        unavailable = [
+            people_map[pid].name for pid in person_ids
+            if people_map[pid].status in {"resigned"}
+        ]
+        if unavailable:
+            raise ConflictError(f"作业人员 {('、'.join(unavailable))} 已离岗，不能再安排作业任务")
+        return [people_map[pid] for pid in person_ids]
+
+    @classmethod
+    def _check_certificates(cls, cert_type, plan_date, people):
+        """安排需要持证的任务时逐人校验证书在作业日当天有效。
+
+        - 未设置持证要求：不校验；
+        - 已设置要求但没有作业人员：提示先指定人员；
+        - 逐人检查是否持有对应类型且在计划作业日有效的证书。
+        """
+
+        if not cert_type:
+            return
+        if not people:
+            raise ConflictError(
+                f"该任务要求「{CERT_TYPE.label(cert_type)}」持证上岗，"
+                "请先指定持有效证书的作业人员"
+            )
+        violations = []
+        for person in people:
+            cert = (
+                db.session.query(Certificate)
+                .filter(
+                    Certificate.person_id == person.id,
+                    Certificate.cert_type == cert_type,
+                )
+                .order_by(Certificate.expire_date.desc())
+                .first()
+            )
+            if cert is None:
+                violations.append(f"人员「{person.name}」未持有{CERT_TYPE.label(cert_type)}")
+            elif not cert.is_valid_on(plan_date):
+                cert_label = CERT_TYPE.label(cert_type)
+                if cert.status == "revoked":
+                    violations.append(f"人员「{person.name}」的{cert_label}已注销，不能上岗")
+                elif cert.expire_date and plan_date > cert.expire_date:
+                    violations.append(
+                        f"人员「{person.name}」的{cert_label}有效期至 {cert.expire_date}，"
+                        f"早于作业日 {plan_date}"
+                    )
+                elif cert.review_date and plan_date > cert.review_date:
+                    violations.append(
+                        f"人员「{person.name}」的{cert_label}复审日期为 {cert.review_date}，"
+                        f"作业日 {plan_date} 前须完成复审"
+                    )
+                else:
+                    violations.append(f"人员「{person.name}」的{cert_label}在作业日 {plan_date} 无效")
+        if violations:
+            raise ConflictError("持证上岗校验未通过：" + "；".join(violations))
+
+    @classmethod
     def prepare_instance(cls, instance, payload):
         green_space_id = payload.get("green_space_id", instance.green_space_id)
         space = db.session.get(GreenSpace, green_space_id) if green_space_id else None
@@ -42,6 +121,41 @@ class MaintenanceTaskService(BaseService):
             raise ValidationError("登记失败", details={"green_space_id": "所选绿地不存在"})
         if space.status == "archived":
             raise ConflictError(f"绿地「{space.name}」已归档，不能再登记养护任务")
+
+        # 持证校验需使用本次提交的最终值（update 时实例字段还是旧值）
+        assignee_ids = getattr(instance, "_pending_assignee_ids", None)
+        if assignee_ids is not None:
+            people = cls._resolve_assignees(assignee_ids)
+        elif instance.id is not None:
+            # 更新时未重交人员名单：沿用现有作业人员
+            people = [link.person for link in instance.assignees if link.person]
+        else:
+            return
+        cert_type = payload.get("required_cert_type", instance.required_cert_type)
+        plan_date = payload.get("plan_date", instance.plan_date)
+        cls._check_certificates(cert_type, plan_date, people)
+
+    @classmethod
+    def after_create(cls, instance, payload):
+        cls._sync_assignees(instance, getattr(instance, "_pending_assignee_ids", None))
+
+    @classmethod
+    def after_update(cls, instance, payload):
+        cls._sync_assignees(instance, getattr(instance, "_pending_assignee_ids", None))
+
+    @classmethod
+    def _sync_assignees(cls, task, person_ids):
+        """按提交的人员列表重建任务作业人员关联。"""
+
+        if person_ids is None:
+            return
+        db.session.query(TaskAssignee).filter(TaskAssignee.task_id == task.id).delete(
+            synchronize_session=False
+        )
+        for person_id in person_ids:
+            db.session.add(TaskAssignee(task_id=task.id, person_id=person_id))
+        db.session.flush()
+        db.session.expire(task, ["assignees"])
 
     @classmethod
     def apply_derived(cls, instance):
@@ -74,6 +188,12 @@ class MaintenanceTaskService(BaseService):
             )
         if filters.get("unplanned"):
             query = query.filter(MaintenanceTask.status == "pending")
+        if filters.get("cert_required"):
+            query = query.filter(MaintenanceTask.required_cert_type.isnot(None))
+        if filters.get("required_cert_type"):
+            query = query.filter(
+                MaintenanceTask.required_cert_type == filters["required_cert_type"]
+            )
         keyword = filters.get("keyword")
         if keyword:
             like = f"%{keyword}%"
@@ -111,6 +231,8 @@ class MaintenanceTaskService(BaseService):
             MaintenanceTask,
             record_count.label("record_count"),
             qualified_count.label("qualified_count"),
+        ).options(
+            joinedload(MaintenanceTask.assignees).joinedload(TaskAssignee.person)
         )
         query = cls._apply_filters(query, filters)
         query = query.order_by(parse_sort(args, cls.SORTABLE, MaintenanceTask.plan_date.desc()))
@@ -169,6 +291,11 @@ class MaintenanceTaskService(BaseService):
         status = payload["status"]
         if payload.get("description") is not None:
             task.description = payload["description"]
+
+        # 开工即意味着人员实际进场作业，此时复核持证情况（按计划作业日校验）
+        if status == "in_progress" and task.status != "in_progress":
+            people = [link.person for link in task.assignees if link.person]
+            cls._check_certificates(task.required_cert_type, task.plan_date, people)
 
         if status == "completed":
             unqualified = (

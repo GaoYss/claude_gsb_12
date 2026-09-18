@@ -151,6 +151,68 @@ def make_replacement(make_space):
 
 
 @pytest.fixture()
+def make_person(app):
+    from app.services import PersonService
+
+    counter = {"n": 0}
+
+    def _make(**overrides):
+        counter["n"] += 1
+        payload = {
+            "employee_no": f"EMP{counter['n']:04d}",
+            "name": f"测试人员{counter['n']}",
+            "team": "绿化一班",
+            "position": "绿化工",
+            "status": "active",
+            "entry_date": date(2022, 3, 1),
+        }
+        payload.update(overrides)
+        return PersonService.create(payload)
+
+    return _make
+
+
+@pytest.fixture()
+def make_certificate(make_person):
+    from app.services import CertificateService
+
+    def _make(person=None, cert_type="electrician_low", **overrides):
+        person = person or make_person()
+        payload = {
+            "person_id": person.id,
+            "cert_no": f"CERT-{cert_type}-{person.id}",
+            "cert_type": cert_type,
+            "issuer": "杭州市应急管理局",
+            "issue_date": date(2024, 1, 1),
+            "expire_date": date(2027, 1, 1),
+        }
+        payload.update(overrides)
+        return CertificateService.create(payload)
+
+    return _make
+
+
+@pytest.fixture()
+def make_training(make_person):
+    from app.services import TrainingRecordService
+
+    def _make(trainer="王老师", attendees=None, **overrides):
+        payload = {
+            "topic": "安全生产培训",
+            "category": "safety",
+            "train_date": date(2026, 3, 1),
+            "location": "单位会议室",
+            "trainer": trainer,
+            "duration_hours": 4,
+            "attendees": attendees or [],
+        }
+        payload.update(overrides)
+        return TrainingRecordService.create(payload)
+
+    return _make
+
+
+@pytest.fixture()
 def seeded(app):
     """写入演示数据（固定随机种子，保证断言稳定）。"""
 

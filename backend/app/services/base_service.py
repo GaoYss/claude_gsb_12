@@ -15,6 +15,9 @@ class BaseService:
     code_field = None          # 业务编号字段名，None 表示无编号
     code_width = 4
     MAX_CODE_RETRY = 5
+    # 不属于表列、需要在同事务内单独处理的载荷字段（如关联人员 ID 列表），
+    # 在构造模型实例前摘出并暂存到 instance._<field>，交由 after_* 钩子落库
+    transient_fields = ()
 
     # ------------------------------------------------------------ 编号
     @classmethod
@@ -76,7 +79,13 @@ class BaseService:
             if cls.code_field and not payload.get(cls.code_field):
                 payload[cls.code_field] = cls.generate_code()
 
-            instance = cls.model(**payload)
+            # 摘出非表列字段（关联 ID 列表等），避免传入模型构造器，
+            # 暂存到实例上供 prepare_instance / after_create 使用
+            instance = cls.model(**{k: v for k, v in payload.items()
+                                    if k not in cls.transient_fields})
+            for field in cls.transient_fields:
+                if field in payload:
+                    setattr(instance, f"_pending_{field}", payload[field])
             cls.prepare_instance(instance, payload)
             cls.apply_derived(instance)
             db.session.add(instance)
@@ -104,6 +113,14 @@ class BaseService:
         if cls.code_field:
             # 业务编号是外部引用依据，创建后不允许修改
             payload.pop(cls.code_field, None)
+
+        pending = {}
+        for field in cls.transient_fields:
+            if field in payload:
+                pending[field] = payload.pop(field)
+        # 非表列字段在 prepare 阶段也可见，与 create 保持一致
+        for field, value in pending.items():
+            setattr(instance, f"_pending_{field}", value)
 
         cls.prepare_update(instance, payload)
         for field, value in payload.items():

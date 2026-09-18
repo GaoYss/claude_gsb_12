@@ -162,3 +162,38 @@ class PayloadValidator:
         if self.errors:
             raise ValidationError("提交的数据未通过校验", details=self.errors)
         return self.clean
+
+    def int_list(self, field, label, *, required=False, min_value=1, max_items=200):
+        """整数 ID 列表（如任务作业人员），自动去重并保持传入顺序。"""
+
+        if not self._provided(field):
+            return self._skip(field, label, required, None)
+        value = self.raw[field]
+        if value is None or (isinstance(value, str) and not value.strip()):
+            if required:
+                self._fail(field, f"{label}不能为空")
+            else:
+                self.clean[field] = []
+            return self
+        if not isinstance(value, list):
+            self._fail(field, f"{label}必须是数组")
+            return self
+        if len(value) > max_items:
+            self._fail(field, f"{label}最多选择 {max_items} 项")
+            return self
+        result = []
+        for index, item in enumerate(value):
+            try:
+                number = int(str(item).strip())
+            except (TypeError, ValueError, AttributeError):
+                self._fail(field, f"{label}第 {index + 1} 项不是合法编号")
+                return self
+            if number < min_value:
+                self._fail(field, f"{label}第 {index + 1} 项编号不合法")
+                return self
+            if number not in result:
+                result.append(number)
+        if required and not result:
+            self._fail(field, f"{label}不能为空")
+        self.clean[field] = result
+        return self

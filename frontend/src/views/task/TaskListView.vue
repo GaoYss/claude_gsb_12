@@ -22,6 +22,9 @@
         <el-select v-model="filters.priority" placeholder="优先级" clearable @change="search">
           <el-option v-for="item in priorityOptions" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
+        <el-select v-model="filters.required_cert_type" placeholder="持证要求" clearable @change="search">
+          <el-option v-for="item in certTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
+        </el-select>
         <el-date-picker v-model="dateRange" type="daterange" unlink-panels value-format="YYYY-MM-DD"
                         start-placeholder="计划开始" end-placeholder="计划结束" @change="onDateChange" />
         <el-checkbox v-model="filters.overdue" label="仅看逾期" border @change="search" />
@@ -70,6 +73,15 @@
         </el-table-column>
         <el-table-column prop="executor" label="执行班组" width="100">
           <template #default="{ row }">{{ row.executor || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="持证 / 人员" width="150">
+          <template #default="{ row }">
+            <div v-if="row.required_cert_type">
+              <el-tag type="warning" size="small" effect="plain">{{ row.required_cert_type_label }}</el-tag>
+              <div class="cell-sub">{{ row.assignees?.length || 0 }} 人持证上岗</div>
+            </div>
+            <span v-else class="cell-sub">普通作业</span>
+          </template>
         </el-table-column>
         <el-table-column label="执行进度" width="112">
           <template #default="{ row }">
@@ -143,6 +155,7 @@ const dateRange = ref([])
 const { options: statusOptions } = useEnumOptions('task_status')
 const { options: typeOptions } = useEnumOptions('task_type')
 const { options: priorityOptions } = useEnumOptions('task_priority')
+const { options: certTypeOptions } = useEnumOptions('cert_type')
 
 const { filters, meta, items, summary, loading, load, search, resetFilters, handlePageChange, handleSizeChange } =
   useListQuery(maintenanceTaskApi.list, {
@@ -152,6 +165,7 @@ const { filters, meta, items, summary, loading, load, search, resetFilters, hand
       status: '',
       task_type: '',
       priority: '',
+      required_cert_type: '',
       date_from: '',
       date_to: '',
       overdue: false,

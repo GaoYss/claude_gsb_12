@@ -23,6 +23,12 @@ def test_enums_cover_all_business_groups(api):
         "replacement_reason",
         "old_plant_status",
         "measure_unit",
+        "person_status",
+        "training_category",
+        "attendance_status",
+        "cert_type",
+        "certificate_status",
+        "certificate_validity",
     }
     assert expected.issubset(set(enums))
     assert {"value": "park", "label": "公园绿地"} in enums["green_space_type"]

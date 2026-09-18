@@ -1,6 +1,6 @@
 """养护任务校验规则。"""
 
-from ..constants import TASK_PRIORITY, TASK_STATUS, TASK_TYPE
+from ..constants import CERT_TYPE, TASK_PRIORITY, TASK_STATUS, TASK_TYPE
 from .common import PayloadValidator
 
 
@@ -15,6 +15,8 @@ def validate_maintenance_task(payload):
         .enum("priority", "优先级", group=TASK_PRIORITY, default="medium")
         .string("executor", "执行班组/负责人", max_length=64)
         .enum("status", "任务状态", group=TASK_STATUS, default="pending")
+        .enum("required_cert_type", "持证要求", group=CERT_TYPE)
+        .int_list("assignee_ids", "作业人员")
         .text("description", "任务说明", max_length=2000)
         .done()
     )

@@ -4,16 +4,22 @@
 - 列表查询用 filters 模块：非法过滤值直接忽略，不打断查询。
 """
 
+from .certificate import validate_certificate, validate_certificate_status
 from .filters import (
+    certificate_filters,
     green_space_filters,
+    person_filters,
     record_filters,
     replacement_filters,
     task_filters,
+    training_filters,
 )
 from .green_space import validate_green_space
 from .maintenance_record import validate_maintenance_record
 from .maintenance_task import validate_maintenance_task, validate_task_status
+from .person import validate_person
 from .plant_replacement import validate_plant_replacement
+from .training import validate_training, validate_training_attendees
 
 __all__ = [
     "validate_green_space",
@@ -21,8 +27,16 @@ __all__ = [
     "validate_task_status",
     "validate_maintenance_record",
     "validate_plant_replacement",
+    "validate_person",
+    "validate_training",
+    "validate_training_attendees",
+    "validate_certificate",
+    "validate_certificate_status",
     "green_space_filters",
     "task_filters",
     "record_filters",
     "replacement_filters",
+    "person_filters",
+    "training_filters",
+    "certificate_filters",
 ]

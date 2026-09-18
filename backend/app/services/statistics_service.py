@@ -3,13 +3,22 @@
 from datetime import timedelta
 
 from sqlalchemy import func
+from sqlalchemy.orm import joinedload
 
 from ..constants import ENUM_GROUPS
 from ..extensions import db
-from ..models import GreenSpace, MaintenanceRecord, MaintenanceTask, PlantReplacement
+from ..models import (
+    GreenSpace,
+    MaintenanceRecord,
+    MaintenanceTask,
+    Person,
+    PlantReplacement,
+    TrainingRecord,
+)
 from ..models.maintenance_task import OPEN_STATUSES
 from ..utils.dates import today
 from ..utils.numbers import to_float
+from .certificate_service import CertificateService
 
 
 class StatisticsService:
@@ -97,6 +106,23 @@ class StatisticsService:
         ).filter(PlantReplacement.replace_date >= year_start).one()
 
         completed = task_status.get("completed", 0)
+
+        person_total = db.session.query(func.count(Person.id)).scalar() or 0
+        person_active = (
+            db.session.query(func.count(Person.id))
+            .filter(Person.status == "active")
+            .scalar()
+            or 0
+        )
+        training_total = db.session.query(func.count(TrainingRecord.id)).scalar() or 0
+        training_month = (
+            db.session.query(func.count(TrainingRecord.id))
+            .filter(TrainingRecord.train_date >= month_start)
+            .scalar()
+            or 0
+        )
+        cert_summary = CertificateService.summary()
+
         return {
             "generated_at": f"{current:%Y-%m-%d}",
             "green_space": {
@@ -127,6 +153,14 @@ class StatisticsService:
                 "month_amount": to_float(month_amount) or 0,
                 "year_quantity": to_float(year_quantity) or 0,
                 "year_amount": to_float(year_amount) or 0,
+            },
+            "personnel": {
+                "person_total": person_total,
+                "person_active": person_active,
+                "training_total": training_total or 0,
+                "training_month": int(training_month or 0),
+                "cert_expiring_count": cert_summary.get("expiring", 0),
+                "cert_expired_count": cert_summary.get("expired", 0),
             },
         }
 
@@ -342,6 +376,7 @@ class StatisticsService:
     def overdue_tasks(limit=10):
         tasks = (
             db.session.query(MaintenanceTask)
+            .options(joinedload(MaintenanceTask.assignees))
             .filter(
                 MaintenanceTask.status.in_(OPEN_STATUSES),
                 MaintenanceTask.plan_date < today(),
@@ -356,6 +391,7 @@ class StatisticsService:
     def upcoming_tasks(limit=10):
         tasks = (
             db.session.query(MaintenanceTask)
+            .options(joinedload(MaintenanceTask.assignees))
             .filter(
                 MaintenanceTask.status.in_(OPEN_STATUSES),
                 MaintenanceTask.plan_date >= today(),
@@ -387,6 +423,16 @@ class StatisticsService:
 
     # ------------------------------------------------------------ 汇总入口
     @staticmethod
+    def certificate_reminders(limit=10):
+        """证书到期提醒：已过期优先，其次即将到期。"""
+
+        return {
+            "summary": CertificateService.reminder_summary(),
+            "expired": CertificateService.expired_certificates(limit=limit),
+            "expiring": CertificateService.expiring_certificates(limit=limit),
+        }
+
+    @staticmethod
     def dashboard(months=6):
         """看板一次性取数，减少前端并发请求。"""
 
@@ -397,5 +443,6 @@ class StatisticsService:
             "ranking": StatisticsService.green_space_ranking(),
             "overdue_tasks": StatisticsService.overdue_tasks(),
             "upcoming_tasks": StatisticsService.upcoming_tasks(),
+            "certificate_reminders": StatisticsService.certificate_reminders(),
             "recent_activity": StatisticsService.recent_activity(),
         }
