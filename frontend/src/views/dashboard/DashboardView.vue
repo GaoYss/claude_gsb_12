@@ -50,6 +50,21 @@
         tone="info"
         icon="Money"
       />
+      <StatCard
+        label="在岗作业人员"
+        :value="formatNumber(personnel.worker.active_total)"
+        unit="人"
+        :hint="`花名册共 ${personnel.worker.total} 人，培训 ${personnel.training.session_total} 场`"
+        icon="User"
+      />
+      <StatCard
+        label="证书临期 / 过期"
+        :value="`${personnel.certificate.expiring} / ${personnel.certificate.expired}`"
+        unit="本"
+        :hint="`有效证书 ${personnel.certificate.effective} 本，提前 ${personnel.certificate.warning_days} 天预警`"
+        :tone="personnel.certificate.expired || personnel.certificate.expiring ? 'danger' : 'default'"
+        icon="Postcard"
+      />
     </div>
 
     <div class="chart-grid">
@@ -60,6 +75,29 @@
     </div>
 
     <div class="dashboard-columns">
+      <div class="panel">
+        <div class="table-toolbar">
+          <span class="panel-title">证书到期提醒</span>
+          <el-link type="primary" :underline="false" @click="router.push('/certificates')">
+            持证管理
+          </el-link>
+        </div>
+        <el-table :data="certReminderRows" size="small" empty-text="证书均在有效期内">
+          <el-table-column label="持证人" width="90">
+            <template #default="{ row }">{{ row.worker?.name || '-' }}</template>
+          </el-table-column>
+          <el-table-column label="证书类型" min-width="130">
+            <template #default="{ row }">{{ row.cert_type_label }}</template>
+          </el-table-column>
+          <el-table-column prop="expire_date" label="到期日" width="105" />
+          <el-table-column label="状态" width="84">
+            <template #default="{ row }">
+              <EnumTag group="certificate_status" :value="row.status" />
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+
       <div class="panel">
         <div class="table-toolbar">
           <span class="panel-title">逾期未完成的养护任务</span>
@@ -189,10 +227,21 @@ function emptyDashboard() {
     overdue_tasks: [],
     upcoming_tasks: [],
     recent_activity: { records: [], replacements: [] },
+    personnel: {
+      worker: { total: 0, active_total: 0 },
+      training: { session_total: 0, attended_total: 0, qualified_total: 0 },
+      certificate: { total: 0, effective: 0, expiring: 0, expired: 0, warning_days: 30 },
+    },
+    certificate_reminders: { warning_days: 30, expiring: [], expired: [] },
   }
 }
 
 const overview = computed(() => dashboard.value.overview)
+const personnel = computed(() => dashboard.value.personnel)
+const certReminderRows = computed(() => [
+  ...(dashboard.value.certificate_reminders?.expired || []),
+  ...(dashboard.value.certificate_reminders?.expiring || []),
+])
 
 const trendChart = computed(() => trendOption(dashboard.value.trends || []))
 

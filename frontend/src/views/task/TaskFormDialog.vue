@@ -1,6 +1,6 @@
 <template>
   <el-dialog :model-value="visible" :title="isEdit ? `编辑养护任务 · ${form.task_no}` : '登记养护任务'"
-             width="720px" top="7vh" destroy-on-close @update:model-value="close">
+             width="760px" top="7vh" destroy-on-close @update:model-value="close">
     <el-form ref="formRef" :model="form" :rules="rules" label-width="120px">
       <el-form-item label="所属绿地" prop="green_space_id" :error="fieldErrors.green_space_id">
         <GreenSpaceSelect v-model="form.green_space_id" :preset="spacePreset" placeholder="请选择绿地" />
@@ -42,6 +42,30 @@
           </el-form-item>
         </el-col>
       </el-row>
+
+      <el-form-item label="持证要求" :error="fieldErrors.required_cert_type">
+        <el-select v-model="form.required_cert_type" clearable placeholder="无特殊持证要求"
+                   style="width: 100%" @change="onCertTypeChange">
+          <el-option v-for="item in certTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="作业人员" :error="fieldErrors.worker_ids">
+        <WorkerSelect
+          v-model="form.worker_ids"
+          multiple
+          :cert-type="form.required_cert_type || ''"
+          :preset="workerPresets"
+          :placeholder="form.required_cert_type ? '仅可选择证书在有效期内的人员' : '选择派工作业人员（可多选）'"
+        />
+        <div v-if="form.required_cert_type" class="cert-hint">
+          <el-icon><WarningFilled /></el-icon>
+          该任务为持证作业，仅列出持有「{{ certTypeLabel }}」且证书在计划作业日有效的人员；
+          保存时后端会逐人复核，证书无效将无法派工。
+        </div>
+        <el-alert v-if="certBlockMessage" :title="certBlockMessage" type="error" :closable="false"
+                  show-icon class="cert-alert" />
+      </el-form-item>
+
       <el-form-item label="任务说明" :error="fieldErrors.description">
         <el-input v-model="form.description" type="textarea" :rows="3" maxlength="2000"
                   placeholder="作业范围、技术要求、注意事项等" />
@@ -64,7 +88,9 @@ import { ElMessage } from 'element-plus'
 
 import { maintenanceTaskApi } from '@/api'
 import GreenSpaceSelect from '@/components/common/GreenSpaceSelect.vue'
+import WorkerSelect from '@/components/common/WorkerSelect.vue'
 import { useEnumOptions } from '@/composables/useEnumOptions'
+import { useMetaStore } from '@/stores/meta'
 import { today } from '@/utils/format'
 
 const emit = defineEmits(['saved'])
@@ -72,16 +98,22 @@ const emit = defineEmits(['saved'])
 const { options: typeOptions } = useEnumOptions('task_type')
 const { options: priorityOptions } = useEnumOptions('task_priority')
 const { options: statusOptions } = useEnumOptions('task_status')
+const { options: certTypeOptions } = useEnumOptions('certificate_type')
+const metaStore = useMetaStore()
 
 const formRef = ref(null)
 const visible = ref(false)
 const submitting = ref(false)
 const editingId = ref(null)
 const fieldErrors = ref({})
+const certBlockMessage = ref('')
 const spacePreset = ref(null)
+const workerPresets = ref([])
 const form = reactive(emptyForm())
 
 const isEdit = computed(() => editingId.value !== null)
+const certTypeLabel = computed(() =>
+  metaStore.label('certificate_type', form.required_cert_type))
 
 const rules = {
   green_space_id: [{ required: true, message: '请选择所属绿地', trigger: 'change' }],
@@ -99,15 +131,26 @@ function emptyForm() {
     plan_date: today(),
     priority: 'medium',
     executor: '',
+    required_cert_type: null,
+    worker_ids: [],
     status: 'pending',
     description: '',
   }
 }
 
+function onCertTypeChange() {
+  // 切换持证要求后清空已选人员，避免保留不满足新证书要求的人员
+  form.worker_ids = []
+  workerPresets.value = []
+  certBlockMessage.value = ''
+}
+
 function open(row = null) {
   Object.assign(form, emptyForm())
   fieldErrors.value = {}
+  certBlockMessage.value = ''
   spacePreset.value = null
+  workerPresets.value = []
   editingId.value = row?.id ?? null
   if (row) {
     Object.keys(form).forEach((key) => {
@@ -115,6 +158,9 @@ function open(row = null) {
     })
     form.green_space_id = row.green_space_id
     spacePreset.value = row.green_space || null
+    form.required_cert_type = row.required_cert_type || null
+    form.worker_ids = (row.workers || []).map((item) => item.worker_id)
+    workerPresets.value = (row.workers || []).map((item) => item.worker).filter(Boolean)
   }
   visible.value = true
 }
@@ -128,7 +174,9 @@ async function submit() {
   if (!valid) return
   submitting.value = true
   fieldErrors.value = {}
-  const payload = { ...form }
+  certBlockMessage.value = ''
+  const payload = { ...form, worker_ids: [...form.worker_ids] }
+  if (!payload.required_cert_type) payload.required_cert_type = null
   if (!payload.task_no) delete payload.task_no
   try {
     if (isEdit.value) {
@@ -142,6 +190,9 @@ async function submit() {
     close()
   } catch (error) {
     fieldErrors.value = error?.details || {}
+    if (error?.status === 409) {
+      certBlockMessage.value = error.message
+    }
   } finally {
     submitting.value = false
   }
@@ -149,3 +200,19 @@ async function submit() {
 
 defineExpose({ open })
 </script>
+
+<style scoped>
+.cert-hint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  color: #b88230;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.cert-alert {
+  margin-top: 8px;
+}
+</style>

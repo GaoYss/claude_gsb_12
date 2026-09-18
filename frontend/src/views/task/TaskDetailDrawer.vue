@@ -18,12 +18,33 @@
           <el-tag v-if="detail.is_overdue" type="danger" size="small" effect="plain">逾期</el-tag>
         </el-descriptions-item>
         <el-descriptions-item label="执行班组">{{ detail.executor || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="持证要求" :span="2">
+          <el-tag v-if="detail.requires_certificate" type="warning" effect="plain">
+            {{ detail.required_cert_type_label }}
+          </el-tag>
+          <span v-else>无特殊持证要求</span>
+        </el-descriptions-item>
         <el-descriptions-item label="任务状态">
           <EnumTag group="task_status" :value="detail.status" :label="detail.status_label" />
         </el-descriptions-item>
         <el-descriptions-item label="完成时间">{{ formatDateTime(detail.completed_at) }}</el-descriptions-item>
         <el-descriptions-item label="任务说明" :span="2">{{ detail.description || '-' }}</el-descriptions-item>
       </el-descriptions>
+
+      <div class="table-toolbar">
+        <span class="panel-title">派工作业人员（{{ detail.workers?.length || 0 }} 人）</span>
+      </div>
+      <el-table :data="detail.workers || []" size="small" border empty-text="暂未安排作业人员">
+        <el-table-column label="姓名 / 工号" min-width="160">
+          <template #default="{ row }">
+            {{ row.worker?.name || '-' }}
+            <span class="cell-sub">{{ row.worker?.employee_no || '' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="班组" width="120">
+          <template #default="{ row }">{{ row.worker?.team || '-' }}</template>
+        </el-table-column>
+      </el-table>
 
       <div class="stat-grid drawer-stats">
         <StatCard label="养护记录" :value="progress.record_count ?? 0" unit="条"
@@ -132,5 +153,11 @@ defineExpose({ open })
 
 .panel-title {
   font-weight: 600;
+}
+
+.cell-sub {
+  color: #909399;
+  font-size: 12px;
+  margin-left: 6px;
 }
 </style>

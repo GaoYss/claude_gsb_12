@@ -14,6 +14,7 @@ class BaseService:
     label = "记录"
     code_field = None          # 业务编号字段名，None 表示无编号
     code_width = 4
+    collection_fields = ()     # 非列字段（如参加人员、作业人员），由 sync_collections 处理
     MAX_CODE_RETRY = 5
 
     # ------------------------------------------------------------ 编号
@@ -76,6 +77,9 @@ class BaseService:
             if cls.code_field and not payload.get(cls.code_field):
                 payload[cls.code_field] = cls.generate_code()
 
+            collections = {
+                name: payload.pop(name) for name in cls.collection_fields if name in payload
+            }
             instance = cls.model(**payload)
             cls.prepare_instance(instance, payload)
             cls.apply_derived(instance)
@@ -91,6 +95,8 @@ class BaseService:
                     ) from exc
                 continue
 
+            if collections:
+                cls.sync_collections(instance, collections, creating=True)
             cls.after_create(instance, payload)
             db.session.commit()
             return instance
@@ -105,6 +111,9 @@ class BaseService:
             # 业务编号是外部引用依据，创建后不允许修改
             payload.pop(cls.code_field, None)
 
+        collections = {
+            name: payload.pop(name) for name in cls.collection_fields if name in payload
+        }
         cls.prepare_update(instance, payload)
         for field, value in payload.items():
             setattr(instance, field, value)
@@ -114,9 +123,19 @@ class BaseService:
         except IntegrityError as exc:
             db.session.rollback()
             raise ConflictError(f"{cls.label}数据与已有记录冲突") from exc
+        if collections:
+            cls.sync_collections(instance, collections, creating=False)
         cls.after_update(instance, payload)
         db.session.commit()
         return instance
+
+    @classmethod
+    def sync_collections(cls, instance, collections, *, creating):
+        """子表集合（参加人员、作业人员）的同步，子类覆盖。
+
+        collections 形如 {"attendees": [...]}；仅当请求中显式带了该字段才会调用，
+        未携带的字段保持不变，避免局部更新时被误清空。
+        """
 
     @classmethod
     def delete(cls, obj_id):

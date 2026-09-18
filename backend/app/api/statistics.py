@@ -2,7 +2,7 @@
 
 from flask import Blueprint, request
 
-from ..services import StatisticsService
+from ..services import CertificateService, StatisticsService
 from ..utils.responses import ok
 
 bp = Blueprint("statistics", __name__)
@@ -49,9 +49,10 @@ def ranking():
 
 @bp.get("/statistics/reminders")
 def reminders():
-    """逾期与即将到期的养护任务提醒。"""
+    """逾期、即将到期的养护任务，以及临近到期/已过期的特种作业证书提醒。"""
 
     return ok({
         "overdue": StatisticsService.overdue_tasks(),
         "upcoming": StatisticsService.upcoming_tasks(),
+        "certificates": CertificateService.reminders(),
     })

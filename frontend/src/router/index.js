@@ -44,6 +44,24 @@ const routes = [
         component: () => import('@/views/replacement/ReplacementListView.vue'),
         meta: { title: '绿植更换', icon: 'Cherry' },
       },
+      {
+        path: 'workers',
+        name: 'worker-list',
+        component: () => import('@/views/worker/WorkerListView.vue'),
+        meta: { title: '人员档案', icon: 'User' },
+      },
+      {
+        path: 'trainings',
+        name: 'training-list',
+        component: () => import('@/views/training/TrainingListView.vue'),
+        meta: { title: '培训记录', icon: 'Reading' },
+      },
+      {
+        path: 'certificates',
+        name: 'certificate-list',
+        component: () => import('@/views/certificate/CertificateListView.vue'),
+        meta: { title: '持证管理', icon: 'Postcard' },
+      },
     ],
   },
   {

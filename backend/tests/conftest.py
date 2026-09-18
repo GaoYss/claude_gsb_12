@@ -151,6 +151,76 @@ def make_replacement(make_space):
 
 
 @pytest.fixture()
+def make_worker(app):
+    from app.services import WorkerService
+
+    counter = {"n": 0}
+
+    def _make(**overrides):
+        counter["n"] += 1
+        payload = {
+            "name": f"测试人员{counter['n']}",
+            "team": "绿化一班",
+            "position": "绿化工",
+            "phone": "13800000000",
+            "status": "active",
+            "hired_date": date(2020, 5, 1),
+        }
+        payload.update(overrides)
+        return WorkerService.create(payload)
+
+    return _make
+
+
+@pytest.fixture()
+def make_certificate(make_worker):
+    from app.services import CertificateService
+
+    counter = {"n": 0}
+
+    def _make(worker=None, cert_type="aerial", expire_on=None, **overrides):
+        counter["n"] += 1
+        worker = worker or make_worker()
+        expire_on = expire_on or date(2026, 12, 31)
+        payload = {
+            "cert_no": f"CERT-TEST-{counter['n']:04d}",
+            "worker_id": worker.id,
+            "cert_type": cert_type,
+            "issuing_authority": "杭州市应急管理局",
+            "issue_date": date(2023, 1, 1),
+            "expire_date": expire_on,
+        }
+        payload.update(overrides)
+        return CertificateService.create(payload)
+
+    return _make
+
+
+@pytest.fixture()
+def make_training(make_worker):
+    from app.services import TrainingSessionService
+
+    counter = {"n": 0}
+
+    def _make(workers=None, **overrides):
+        counter["n"] += 1
+        workers = workers if workers is not None else [make_worker()]
+        payload = {
+            "topic": f"测试培训{counter['n']}",
+            "category": "safety",
+            "train_date": date(2026, 3, 1),
+            "duration_hours": 2,
+            "trainer": "冯安全",
+            "location": "单位会议室",
+            "attendees": [{"worker_id": person.id} for person in workers],
+        }
+        payload.update(overrides)
+        return TrainingSessionService.create(payload)
+
+    return _make
+
+
+@pytest.fixture()
 def seeded(app):
     """写入演示数据（固定随机种子，保证断言稳定）。"""
 

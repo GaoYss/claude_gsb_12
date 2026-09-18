@@ -6,10 +6,20 @@ from sqlalchemy import func
 
 from ..constants import ENUM_GROUPS
 from ..extensions import db
-from ..models import GreenSpace, MaintenanceRecord, MaintenanceTask, PlantReplacement
+from ..models import (
+    Certificate,
+    GreenSpace,
+    MaintenanceRecord,
+    MaintenanceTask,
+    PlantReplacement,
+    TrainingAttendee,
+    TrainingSession,
+    Worker,
+)
 from ..models.maintenance_task import OPEN_STATUSES
 from ..utils.dates import today
 from ..utils.numbers import to_float
+from .certificate_service import CertificateService
 
 
 class StatisticsService:
@@ -387,6 +397,53 @@ class StatisticsService:
 
     # ------------------------------------------------------------ 汇总入口
     @staticmethod
+    def personnel_overview():
+        """人员培训与持证总览。"""
+
+        current = today()
+        worker_total, active_total = db.session.query(
+            func.count(Worker.id),
+            func.coalesce(func.sum(
+                db.case((Worker.status == "active", 1), else_=0)
+            ), 0),
+        ).one()
+        session_total, attendee_total, qualified_total = db.session.query(
+            func.count(func.distinct(TrainingSession.id)),
+            func.coalesce(func.sum(
+                db.case((TrainingAttendee.attendance == "attended", 1), else_=0)
+            ), 0),
+            func.coalesce(func.sum(
+                db.case((TrainingAttendee.result == "qualified", 1), else_=0)
+            ), 0),
+        ).outerjoin(TrainingAttendee, TrainingAttendee.session_id == TrainingSession.id).one()
+        cert_summary = CertificateService.status_summary()
+
+        category_rows = (
+            db.session.query(Certificate.cert_type, func.count(Certificate.id))
+            .group_by(Certificate.cert_type)
+            .all()
+        )
+        cert_by_type = [
+            {
+                "value": cert_type,
+                "label": ENUM_GROUPS["certificate_type"].label(cert_type),
+                "count": count,
+            }
+            for cert_type, count in category_rows
+        ]
+        return {
+            "worker": {"total": worker_total or 0, "active_total": int(active_total or 0)},
+            "training": {
+                "session_total": session_total or 0,
+                "attended_total": int(attendee_total or 0),
+                "qualified_total": int(qualified_total or 0),
+            },
+            "certificate": cert_summary,
+            "certificate_by_type": cert_by_type,
+            "generated_at": f"{current:%Y-%m-%d}",
+        }
+
+    @staticmethod
     def dashboard(months=6):
         """看板一次性取数，减少前端并发请求。"""
 
@@ -398,4 +455,6 @@ class StatisticsService:
             "overdue_tasks": StatisticsService.overdue_tasks(),
             "upcoming_tasks": StatisticsService.upcoming_tasks(),
             "recent_activity": StatisticsService.recent_activity(),
+            "personnel": StatisticsService.personnel_overview(),
+            "certificate_reminders": CertificateService.reminders(limit=10),
         }

@@ -1,11 +1,14 @@
 """接口层：按业务模块拆分 Blueprint，统一挂载到 /api/v1。"""
 
+from .certificates import bp as certificates_bp
 from .green_spaces import bp as green_spaces_bp
 from .maintenance_records import bp as maintenance_records_bp
 from .maintenance_tasks import bp as maintenance_tasks_bp
 from .meta import bp as meta_bp
 from .plant_replacements import bp as plant_replacements_bp
 from .statistics import bp as statistics_bp
+from .training_sessions import bp as training_sessions_bp
+from .workers import bp as workers_bp
 
 BLUEPRINTS = (
     meta_bp,
@@ -13,6 +16,9 @@ BLUEPRINTS = (
     maintenance_tasks_bp,
     maintenance_records_bp,
     plant_replacements_bp,
+    workers_bp,
+    training_sessions_bp,
+    certificates_bp,
     statistics_bp,
 )
 

@@ -60,11 +60,19 @@ def task_filters(args):
     green_space_id = _int(args, "green_space_id")
     if green_space_id:
         filters["green_space_id"] = green_space_id
+    worker_id = _int(args, "worker_id")
+    if worker_id:
+        filters["worker_id"] = worker_id
     for key, group_key in (("status", "task_status"), ("task_type", "task_type"),
                            ("priority", "task_priority")):
         value = _enum(args, key, group_key)
         if value:
             filters[key] = value
+    required_cert = _enum(args, "required_cert_type", "certificate_type")
+    if required_cert:
+        filters["required_cert_type"] = required_cert
+    elif _flag(args, "requires_certificate"):
+        filters["requires_certificate"] = True
     keyword = _text(args, "keyword")
     if keyword:
         filters["keyword"] = keyword
@@ -104,6 +112,57 @@ def replacement_filters(args):
         value = _enum(args, key, group_key)
         if value:
             filters[key] = value
+    keyword = _text(args, "keyword")
+    if keyword:
+        filters["keyword"] = keyword
+    filters["date_from"] = _date(args, "date_from")
+    filters["date_to"] = _date(args, "date_to")
+    return filters
+
+
+def worker_filters(args):
+    filters = {}
+    value = _enum(args, "status", "worker_status")
+    if value:
+        filters["status"] = value
+    team = _text(args, "team")
+    if team:
+        filters["team"] = team
+    keyword = _text(args, "keyword")
+    if keyword:
+        filters["keyword"] = keyword
+    return filters
+
+
+def training_filters(args):
+    filters = {}
+    for key in ("worker_id",):
+        value = _int(args, key)
+        if value:
+            filters[key] = value
+    category = _enum(args, "category", "training_category")
+    if category:
+        filters["category"] = category
+    keyword = _text(args, "keyword")
+    if keyword:
+        filters["keyword"] = keyword
+    filters["date_from"] = _date(args, "date_from")
+    filters["date_to"] = _date(args, "date_to")
+    return filters
+
+
+def certificate_filters(args):
+    filters = {}
+    for key in ("worker_id",):
+        value = _int(args, key)
+        if value:
+            filters[key] = value
+    cert_type = _enum(args, "cert_type", "certificate_type")
+    if cert_type:
+        filters["cert_type"] = cert_type
+    status = _text(args, "status")
+    if status in {"effective", "expiring", "expired"}:
+        filters["status"] = status
     keyword = _text(args, "keyword")
     if keyword:
         filters["keyword"] = keyword

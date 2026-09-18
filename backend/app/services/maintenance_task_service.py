@@ -5,23 +5,25 @@ from sqlalchemy import func, or_
 from ..constants import ENUM_GROUPS
 from ..errors import ConflictError, ValidationError
 from ..extensions import db
-from ..models import GreenSpace, MaintenanceRecord, MaintenanceTask, PlantReplacement
+from ..models import GreenSpace, MaintenanceRecord, MaintenanceTask, PlantReplacement, TaskWorker, Worker
 from ..models.maintenance_task import OPEN_STATUSES
 from ..models.mixins import utcnow
 from ..utils.dates import format_date, today
 from ..utils.numbers import to_float
 from ..utils.sorting import parse_sort
 from .base_service import BaseService
+from .certificate_service import CertificateService
 from .code_generator import daily_prefix
 
 
 class MaintenanceTaskService(BaseService):
-    """养护任务登记：创建、检索、状态流转与删除保护。"""
+    """养护任务登记：创建、检索、状态流转、持证派工校验与删除保护。"""
 
     model = MaintenanceTask
     label = "养护任务"
     code_field = "task_no"
     code_width = 3
+    collection_fields = ("worker_ids",)
 
     SORTABLE = {
         "plan_date": MaintenanceTask.plan_date,
@@ -44,6 +46,48 @@ class MaintenanceTaskService(BaseService):
             raise ConflictError(f"绿地「{space.name}」已归档，不能再登记养护任务")
 
     @classmethod
+    def sync_collections(cls, instance, collections, *, creating):
+        """同步派工人员；任务要求持证时逐人校验证书有效性。"""
+
+        if "worker_ids" not in collections:
+            return
+        cls._sync_workers(instance, collections["worker_ids"])
+
+    @classmethod
+    def _sync_workers(cls, task, worker_ids):
+        unique_ids = list(dict.fromkeys(worker_ids or []))
+        workers = (
+            db.session.query(Worker).filter(Worker.id.in_(unique_ids)).all()
+            if unique_ids
+            else []
+        )
+        worker_map = {worker.id: worker for worker in workers}
+        missing = sorted(set(unique_ids) - set(worker_map))
+        if missing:
+            raise ValidationError(
+                "派工失败", details={"worker_ids": f"作业人员不存在：{', '.join(str(i) for i in missing)}"}
+            )
+
+        if task.required_cert_type:
+            problems = []
+            for worker_id in unique_ids:
+                # 以上岗作业当日（计划日期）的证书状态为准
+                message = CertificateService.check_assignment(
+                    worker_map[worker_id], task.required_cert_type, on_date=task.plan_date
+                )
+                if message:
+                    problems.append(message)
+            if problems:
+                cert_label = ENUM_GROUPS["certificate_type"].label(task.required_cert_type)
+                raise ConflictError(
+                    f"该任务要求持「{cert_label}」证上岗，以下人员证书校验未通过：{'；'.join(problems)}",
+                    details={"certificate": problems},
+                )
+
+        # 整体替换派工集合，旧派工由 delete-orphan 级联清理
+        task.workers = [TaskWorker(worker_id=worker_id) for worker_id in unique_ids]
+
+    @classmethod
     def apply_derived(cls, instance):
         """状态与完成时间保持一致：完成即写入完成时间，撤销完成即清空。"""
 
@@ -57,12 +101,20 @@ class MaintenanceTaskService(BaseService):
     def _apply_filters(cls, query, filters):
         if filters.get("green_space_id"):
             query = query.filter(MaintenanceTask.green_space_id == filters["green_space_id"])
+        if filters.get("worker_id"):
+            query = query.filter(
+                MaintenanceTask.workers.any(TaskWorker.worker_id == filters["worker_id"])
+            )
         if filters.get("status"):
             query = query.filter(MaintenanceTask.status == filters["status"])
         if filters.get("task_type"):
             query = query.filter(MaintenanceTask.task_type == filters["task_type"])
         if filters.get("priority"):
             query = query.filter(MaintenanceTask.priority == filters["priority"])
+        if filters.get("required_cert_type"):
+            query = query.filter(MaintenanceTask.required_cert_type == filters["required_cert_type"])
+        elif filters.get("requires_certificate"):
+            query = query.filter(MaintenanceTask.required_cert_type.isnot(None))
         if filters.get("date_from"):
             query = query.filter(MaintenanceTask.plan_date >= filters["date_from"])
         if filters.get("date_to"):

@@ -80,6 +80,7 @@ def test_dashboard_returns_all_sections(api, seeded):
     assert set(data) == {
         "overview", "distributions", "trends", "ranking",
         "overdue_tasks", "upcoming_tasks", "recent_activity",
+        "personnel", "certificate_reminders",
     }
     assert len(data["trends"]) == 6
     assert data["recent_activity"]["records"]

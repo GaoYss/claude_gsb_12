@@ -25,6 +25,7 @@
         <el-date-picker v-model="dateRange" type="daterange" unlink-panels value-format="YYYY-MM-DD"
                         start-placeholder="计划开始" end-placeholder="计划结束" @change="onDateChange" />
         <el-checkbox v-model="filters.overdue" label="仅看逾期" border @change="search" />
+        <el-checkbox v-model="filters.requires_certificate" label="持证作业" border @change="search" />
         <el-button type="primary" :icon="'Search'" @click="search">查询</el-button>
         <el-button :icon="'RefreshLeft'" @click="resetFilters">重置</el-button>
       </div>
@@ -71,6 +72,15 @@
         <el-table-column prop="executor" label="执行班组" width="100">
           <template #default="{ row }">{{ row.executor || '-' }}</template>
         </el-table-column>
+        <el-table-column label="持证 / 人员" width="120">
+          <template #default="{ row }">
+            <el-tag v-if="row.requires_certificate" type="warning" size="small" effect="plain">
+              {{ row.required_cert_type_label }}
+            </el-tag>
+            <span v-else class="cell-sub">普通作业</span>
+            <div class="cell-sub">派工 {{ row.worker_count || 0 }} 人</div>
+          </template>
+        </el-table-column>
         <el-table-column label="执行进度" width="112">
           <template #default="{ row }">
             <div>{{ row.progress.record_count }} 条记录</div>
@@ -85,7 +95,7 @@
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="drawer.open(row.id)">详情</el-button>
-            <el-button link type="primary" @click="formDialog.open(row)">编辑</el-button>
+            <el-button link type="primary" @click="edit(row)">编辑</el-button>
             <el-dropdown trigger="click" @command="(status) => changeStatus(row, status)">
               <el-button link type="primary">状态<el-icon><ArrowDown /></el-icon></el-button>
               <template #dropdown>
@@ -155,6 +165,7 @@ const { filters, meta, items, summary, loading, load, search, resetFilters, hand
       date_from: '',
       date_to: '',
       overdue: false,
+      requires_certificate: false,
     },
   })
 
@@ -162,6 +173,12 @@ function onDateChange(value) {
   filters.date_from = value?.[0] || ''
   filters.date_to = value?.[1] || ''
   search()
+}
+
+async function edit(row) {
+  // 列表行不含派工人员明细，先取详情再打开编辑，避免保存时误清空派工
+  const detail = await maintenanceTaskApi.detail(row.id)
+  formDialog.value.open(detail)
 }
 
 async function changeStatus(row, status) {

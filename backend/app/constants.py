@@ -130,6 +130,52 @@ MEASURE_UNIT = EnumGroup("measure_unit", [
     ("clump", "丛"),
 ])
 
+# ---------------------------------------------------------------- 人员档案
+WORKER_STATUS = EnumGroup("worker_status", [
+    ("active", "在岗"),
+    ("leave", "休假"),
+    ("resigned", "离职"),
+])
+
+# ---------------------------------------------------------------- 培训管理
+TRAINING_CATEGORY = EnumGroup("training_category", [
+    ("safety", "安全生产教育"),
+    ("skill", "养护技能培训"),
+    ("pest", "病虫害防治"),
+    ("machinery", "园林机械操作"),
+    ("emergency", "应急演练"),
+    ("regulation", "规章制度"),
+    ("other", "其他培训"),
+])
+
+ATTENDANCE_STATUS = EnumGroup("attendance_status", [
+    ("attended", "已参加"),
+    ("leave", "请假"),
+    ("absent", "缺席"),
+])
+
+TRAINING_RESULT = EnumGroup("training_result", [
+    ("qualified", "考核合格"),
+    ("unqualified", "考核不合格"),
+    ("exempt", "免考 / 仅参训"),
+])
+
+# ---------------------------------------------------------------- 特种作业证书
+CERTIFICATE_TYPE = EnumGroup("certificate_type", [
+    ("aerial", "高处作业（登高）"),
+    ("electrician", "低压电工作业"),
+    ("high_electrician", "高压电工作业"),
+    ("welder", "焊接与热切割作业"),
+    ("forklift", "场（厂）内机动车辆作业"),
+    ("confined", "有限空间作业"),
+    ("pesticide", "农药施用作业"),
+    ("crane", "起重装卸作业"),
+    ("other", "其他证书"),
+])
+
+# 证书临近到期的预警提前天数
+CERT_EXPIRY_WARNING_DAYS = 30
+
 # 前端下拉与文档共用的一份字典清单
 ENUM_GROUPS = {
     "green_space_type": GREEN_SPACE_TYPE,
@@ -144,6 +190,11 @@ ENUM_GROUPS = {
     "replacement_reason": REPLACEMENT_REASON,
     "old_plant_status": OLD_PLANT_STATUS,
     "measure_unit": MEASURE_UNIT,
+    "worker_status": WORKER_STATUS,
+    "training_category": TRAINING_CATEGORY,
+    "attendance_status": ATTENDANCE_STATUS,
+    "training_result": TRAINING_RESULT,
+    "certificate_type": CERTIFICATE_TYPE,
 }
 
 

@@ -162,3 +162,34 @@ class PayloadValidator:
         if self.errors:
             raise ValidationError("提交的数据未通过校验", details=self.errors)
         return self.clean
+
+    def array(self, field, label, *, each, required=False, default=None,
+              max_items=500):
+        """数组字段：each(raw_item, index) 返回清洗后的元素，校验失败抛 ValidationError。
+
+        子元素的字段错误会被汇总成 ``field[index].子字段`` 的形式，便于表单逐行定位。
+        """
+
+        if not self._provided(field):
+            return self._skip(field, label, required, default)
+        value = self.raw[field]
+        if value is None:
+            value = []
+        if not isinstance(value, list):
+            self._fail(field, f"{label}必须是数组")
+            return self
+        if required and not value:
+            self._fail(field, f"{label}不能为空")
+            return self
+        if len(value) > max_items:
+            self._fail(field, f"{label}最多不能超过 {max_items} 条")
+            return self
+        cleaned_items = []
+        for index, raw_item in enumerate(value):
+            try:
+                cleaned_items.append(each(raw_item, index))
+            except ValidationError as exc:
+                for key, message in (exc.details or {"_": str(exc)}).items():
+                    self.errors.setdefault(f"{field}[{index}].{key}", message)
+        self.clean[field] = cleaned_items
+        return self

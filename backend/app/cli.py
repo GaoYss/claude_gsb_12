@@ -13,10 +13,13 @@ from flask.cli import with_appcontext
 from .extensions import db
 from .models import GreenSpace
 from .services import (
+    CertificateService,
     GreenSpaceService,
     MaintenanceRecordService,
     MaintenanceTaskService,
     PlantReplacementService,
+    TrainingSessionService,
+    WorkerService,
 )
 
 SPACE_SEEDS = [
@@ -164,6 +167,44 @@ WEATHERS = ["sunny", "cloudy", "overcast", "rain", "windy"]
 WORKERS = ["王海涛", "李建民", "张凤英", "吴国强", "何丽萍", "赵春生", "孙明华", "许娟"]
 SUPPLIERS = ["萧山苗木合作社", "临安绿源苗圃", "余杭花卉基地", "杭州城西园艺公司"]
 
+# 人员档案：姓名、班组、岗位、电话
+WORKER_SEEDS = [
+    ("王海涛", "绿化一班", "班长", "13800010001"),
+    ("李建民", "绿化一班", "高级绿化工", "13800010002"),
+    ("张凤英", "绿化一班", "绿化工", "13800010003"),
+    ("吴国强", "绿化二班", "班长", "13800010004"),
+    ("何丽萍", "绿化二班", "绿化工", "13800010005"),
+    ("赵春生", "植保班", "植保员", "13800010006"),
+    ("孙明华", "植保班", "植保员", "13800010007"),
+    ("许娟", "机械班", "机械操作手", "13800010008"),
+    ("郑大力", "应急班组", "高空作业手", "13800010009"),
+    ("冯安全", "安全管理科", "专职安全员", "13800010010"),
+]
+
+# 证书种子：(人员序号, 证书类型, 发证距今天数, 到期距今天数)
+# 正数为未来日期，刻意覆盖「有效 / 临近到期(30天内) / 已过期」三种状态
+CERT_SEEDS = [
+    (0, "aerial", -900, 200),
+    (1, "aerial", -1100, 15),
+    (2, "aerial", -1200, -40),
+    (3, "pesticide", -600, 300),
+    (4, "pesticide", -900, 10),
+    (5, "electrician", -1100, -12),
+    (6, "forklift", -400, 400),
+    (7, "confined", -700, 25),
+    (8, "aerial", -500, 500),
+    (8, "pesticide", -500, 500),
+]
+
+# 培训场次：(主题, 类别, 距今天数, 时长, 讲师, 地点)
+TRAINING_SEEDS = [
+    ("节后复工安全生产教育", "safety", -75, 4.0, "冯安全", "单位三楼会议室"),
+    ("高大乔木修剪与高空作业安全", "skill", -55, 3.0, "王海涛", "运河文化公园现场"),
+    ("常用农药安全施用与防护", "pest", -32, 2.5, "赵春生", "植保班实训基地"),
+    ("园林机械操作与日常保养", "machinery", -18, 3.5, "许娟", "机械库房训练场"),
+    ("防汛防台应急演练", "emergency", -9, 2.0, "冯安全", "运河文化公园"),
+]
+
 
 def register_cli(app):
     app.cli.add_command(init_db_command)
@@ -207,7 +248,8 @@ def seed_command(reset, seed_value):
     summary = generate_demo_data(random.Random(seed_value))
     click.echo(
         "演示数据写入完成：绿地 {green_space} 处、养护任务 {maintenance_task} 条、"
-        "养护记录 {maintenance_record} 条、绿植更换 {plant_replacement} 条".format(**summary)
+        "养护记录 {maintenance_record} 条、绿植更换 {plant_replacement} 条、"
+        "作业人员 {worker} 人、培训 {training_session} 场、证书 {certificate} 本".format(**summary)
     )
 
 
@@ -220,6 +262,9 @@ def generate_demo_data(rng):
         "maintenance_task": 0,
         "maintenance_record": 0,
         "plant_replacement": 0,
+        "worker": 0,
+        "training_session": 0,
+        "certificate": 0,
     }
 
     for index, space_seed in enumerate(SPACE_SEEDS):
@@ -322,6 +367,83 @@ def generate_demo_data(rng):
             "status": "cancelled",
         })
         counts["maintenance_task"] += 1
+
+    # ------------------------------------------------- 人员、证书、培训
+    workers = []
+    for name, team, position, phone in WORKER_SEEDS:
+        worker = WorkerService.create({
+            "name": name,
+            "team": team,
+            "position": position,
+            "phone": phone,
+            "hired_date": today_ - timedelta(days=1500),
+        })
+        workers.append(worker)
+        counts["worker"] += 1
+
+    cert_seq = 0
+    for worker_index, cert_type, issue_offset, expire_offset in CERT_SEEDS:
+        cert_seq += 1
+        CertificateService.create({
+            "cert_no": f"ZY-2026-{cert_seq:04d}",
+            "worker_id": workers[worker_index].id,
+            "cert_type": cert_type,
+            "issuing_authority": "杭州市应急管理局",
+            "issue_date": today_ + timedelta(days=issue_offset),
+            "expire_date": today_ + timedelta(days=expire_offset),
+        })
+        counts["certificate"] += 1
+
+    # 培训参加人员：除主讲人外随机抽 4-6 人，偶发请假/缺席与不合格
+    for topic, category, day_offset, duration, trainer, location in TRAINING_SEEDS:
+        candidates = [person for person in workers if person.name != trainer]
+        attendees = rng.sample(candidates, rng.randint(4, 6))
+        attendee_payload = []
+        for person in attendees:
+            roll = rng.random()
+            if roll < 0.08:
+                attendance, result, score = "leave", "exempt", None
+            elif roll < 0.14:
+                attendance, result, score = "absent", "exempt", None
+            elif roll < 0.30:
+                attendance, result, score = "attended", "unqualified", round(rng.uniform(55, 59), 1)
+            else:
+                attendance, result, score = "attended", "qualified", round(rng.uniform(70, 98), 1)
+            attendee_payload.append({
+                "worker_id": person.id,
+                "attendance": attendance,
+                "result": result,
+                "score": score,
+            })
+        TrainingSessionService.create({
+            "topic": topic,
+            "category": category,
+            "train_date": today_ + timedelta(days=day_offset),
+            "duration_hours": duration,
+            "location": location,
+            "trainer": trainer,
+            "organization": "安全管理科",
+            "content": f"{topic}：理论讲解、案例分析与现场实操。",
+            "attendees": attendee_payload,
+        })
+        counts["training_session"] += 1
+
+    # 一条需要高处作业证的任务，派给持证有效人员（演示持证上岗校验）
+    if first_space is not None:
+        aerial_holder = CertificateService.valid_certificate(workers[0].id, "aerial")
+        if aerial_holder is not None:
+            MaintenanceTaskService.create({
+                "green_space_id": first_space.id,
+                "title": "高大香樟高空修剪（持证作业）",
+                "task_type": "prune",
+                "plan_date": today_ + timedelta(days=3),
+                "priority": "high",
+                "executor": "绿化一班",
+                "required_cert_type": "aerial",
+                "worker_ids": [workers[0].id],
+                "description": "登高车配合修剪高大乔木，作业人员必须持高处作业证上岗。",
+            })
+            counts["maintenance_task"] += 1
 
     db.session.commit()
     return counts

@@ -1,6 +1,6 @@
 """养护任务模型。"""
 
-from ..constants import TASK_PRIORITY, TASK_STATUS, TASK_TYPE
+from ..constants import CERTIFICATE_TYPE, TASK_PRIORITY, TASK_STATUS, TASK_TYPE
 from ..extensions import db
 from ..utils.dates import format_date, format_datetime, today
 from .mixins import TimestampMixin
@@ -23,6 +23,7 @@ class MaintenanceTask(TimestampMixin, db.Model):
     plan_date = db.Column(db.Date, nullable=False, index=True)
     priority = db.Column(db.String(16), nullable=False, default="medium", index=True)
     executor = db.Column(db.String(64))
+    required_cert_type = db.Column(db.String(32), index=True)
     status = db.Column(db.String(16), nullable=False, default="pending", index=True)
     description = db.Column(db.Text)
     completed_at = db.Column(db.DateTime)
@@ -33,6 +34,18 @@ class MaintenanceTask(TimestampMixin, db.Model):
         back_populates="task",
         order_by="MaintenanceRecord.record_date.desc(), MaintenanceRecord.id.desc()",
     )
+    workers = db.relationship(
+        "TaskWorker",
+        back_populates="task",
+        cascade="all, delete-orphan",
+        order_by="TaskWorker.id.asc()",
+    )
+
+    @property
+    def requires_certificate(self):
+        """该任务是否属于必须持证上岗的特种作业。"""
+
+        return bool(self.required_cert_type)
 
     @property
     def is_overdue(self):
@@ -53,6 +66,14 @@ class MaintenanceTask(TimestampMixin, db.Model):
             "priority": self.priority,
             "priority_label": TASK_PRIORITY.label(self.priority),
             "executor": self.executor,
+            "required_cert_type": self.required_cert_type,
+            "required_cert_type_label": (
+                CERTIFICATE_TYPE.label(self.required_cert_type)
+                if self.required_cert_type
+                else None
+            ),
+            "requires_certificate": self.requires_certificate,
+            "worker_count": len(self.workers),
             "status": self.status,
             "status_label": TASK_STATUS.label(self.status),
             "completed_at": format_datetime(self.completed_at),
@@ -62,4 +83,5 @@ class MaintenanceTask(TimestampMixin, db.Model):
         }
         if detail:
             data["description"] = self.description
+            data["workers"] = [item.to_dict() for item in self.workers]
         return data
